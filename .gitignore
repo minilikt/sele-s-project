@@ -1,0 +1,21 @@
+# Node
+node_modules/
+npm-debug.log*
+*.local
+
+# Environment
+.env
+.env.*
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.idea/
+.vscode/
+*.sw?

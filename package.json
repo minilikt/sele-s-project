@@ -1,0 +1,12 @@
+{
+  "name": "sele-security-suite",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Orchestrates the SIEM and Argus frontends/backends",
+  "scripts": {
+    "dev": "concurrently -k -n SIEM-FE,ARGUS-FE,SIEM-BE,ARGUS-BE -c blue,magenta,green,yellow \"cd siem/frontend && npm run dev\" \"cd argus/frontend && npm run dev -- --port 5174\" \"cd siem/backend && .venv\\Scripts\\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000\" \"cd argus/backend && .venv\\Scripts\\python.exe -m uvicorn main:app --host 0.0.0.0 --port 5000\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
