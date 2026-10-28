@@ -1,21 +1,28 @@
 """
 Database configuration and session management for the SIEM backend.
 
-Uses SQLAlchemy with SQLite for zero-dependency local operation.
+Defaults to SQLite for zero-dependency local operation. Set
+``SIEM_DATABASE_URL`` (for example
+``postgresql+psycopg://siem:siem@localhost:5432/siem``) to point the API at
+PostgreSQL instead.
 """
 
 import os
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-# SQLite database file in the backend directory
 _DB_DIR = os.path.dirname(os.path.abspath(__file__))
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{os.path.join(_DB_DIR, 'siem.db')}"
+_DEFAULT_URL = f"sqlite:///{os.path.join(_DB_DIR, 'siem.db')}"
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},  # Required for SQLite
-)
+SQLALCHEMY_DATABASE_URL = os.getenv("SIEM_DATABASE_URL", _DEFAULT_URL)
+
+_engine_kwargs = {"pool_pre_ping": True}
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    # SQLite needs this for FastAPI's threadpool; other backends must not get it.
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL, **_engine_kwargs)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -32,11 +39,7 @@ def get_db():
 
 
 def init_db():
-    """Create all database tables. Safe to call multiple times."""
-    from models import (  # noqa: F401 — import so Base.metadata knows about them
-        SecurityEvent,
-        Alert,
-        Incident,
-        DetectionRule,
-    )
-    Base.metadata.create_all(bind=engine)
+    """Apply database migrations up to the latest revision."""
+    from migrations import upgrade_database
+
+    upgrade_database()

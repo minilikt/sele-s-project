@@ -1,0 +1,42 @@
+title: New Account Receives Special Privileges
+id: sigma-win-4720-4672-privilege-chain
+status: stable
+description: >
+  Correlates account creation (Event ID 4720) with a subsequent special
+  privilege assignment (Event ID 4672) for the same account within 30 minutes.
+  Creating an account and immediately granting it sensitive privileges is a
+  classic privilege-escalation and persistence chain.
+author: SENTINEL SIEM
+date: 2026/10/25
+references:
+  - https://attack.mitre.org/techniques/T1078/
+  - https://attack.mitre.org/techniques/T1136/
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4720
+  condition: selection
+correlation:
+  type: temporal_ordered
+  group_by:
+    - TargetUserName
+  timeframe: 30m
+  steps:
+    - name: account_created
+      selection:
+        EventID: 4720
+      min_count: 1
+    - name: special_privileges_assigned
+      selection:
+        EventID: 4672
+      min_count: 1
+level: critical
+tags:
+  - attack.privilege_escalation
+  - attack.persistence
+  - attack.t1078
+  - attack.t1136
+falsepositives:
+  - Helpdesk creating an administrator account as part of a documented request

@@ -13,15 +13,15 @@ export default function ExportButtons({ scope }) {
     <div className="export-bar">
       {scope === 'events' && (
         <>
-          <button className="btn btn-secondary btn-small" onClick={() => run(exportEventsCSV)}>⬇ CSV</button>
-          <button className="btn btn-secondary btn-small" onClick={() => run(exportEventsJSON)}>⬇ JSON</button>
+          <button className="btn btn-secondary btn-small" onClick={() => run(exportEventsCSV)}>Export CSV</button>
+          <button className="btn btn-secondary btn-small" onClick={() => run(exportEventsJSON)}>Export JSON</button>
         </>
       )}
       {scope === 'alerts' && (
-        <button className="btn btn-secondary btn-small" onClick={() => run(exportAlertsJSON)}>⬇ Export JSON</button>
+        <button className="btn btn-secondary btn-small" onClick={() => run(exportAlertsJSON)}>Export JSON</button>
       )}
       {scope === 'incidents' && (
-        <button className="btn btn-secondary btn-small" onClick={() => run(exportIncidentsJSON)}>⬇ Export JSON</button>
+        <button className="btn btn-secondary btn-small" onClick={() => run(exportIncidentsJSON)}>Export JSON</button>
       )}
     </div>
   );

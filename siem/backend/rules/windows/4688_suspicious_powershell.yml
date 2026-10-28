@@ -1,0 +1,41 @@
+title: Suspicious PowerShell Command Line
+id: sigma-win-4688-suspicious-powershell
+status: stable
+description: >
+  Detects PowerShell process creation (Event ID 4688) whose command line uses
+  encoded commands, hidden windows, execution-policy bypass or in-memory
+  download/execution primitives. These flags are common in commodity and
+  hands-on-keyboard intrusions.
+author: SENTINEL SIEM
+date: 2026/10/25
+references:
+  - https://attack.mitre.org/techniques/T1059/001/
+logsource:
+  product: windows
+  service: security
+detection:
+  selection_process:
+    EventID: 4688
+    Image|endswith:
+      - 'powershell.exe'
+      - 'pwsh.exe'
+  selection_flags:
+    CommandLine|contains:
+      - '-enc'
+      - '-encodedcommand'
+      - '-w hidden'
+      - '-windowstyle hidden'
+      - 'downloadstring'
+      - 'invoke-expression'
+      - 'iex '
+      - 'bypass'
+  condition: selection_process and selection_flags
+level: high
+tags:
+  - attack.execution
+  - attack.defense_evasion
+  - attack.t1059.001
+  - attack.t1027
+falsepositives:
+  - Software deployment tooling that wraps installers in encoded PowerShell
+  - Administrative scripts using -ExecutionPolicy Bypass

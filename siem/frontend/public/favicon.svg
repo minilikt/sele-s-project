@@ -1,6 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="46" fill="none" viewBox="0 0 48 46">
-  <path fill="#863bff" d="M24 2L6 10v14c0 10.5 7.5 18.5 18 21 10.5-2.5 18-10.5 18-21V10L24 2z"/>
-  <path fill="#ede6ff" d="M24 6L10 12.5v11c0 8 5.5 14.5 14 17 8.5-2.5 14-9 14-17v-11L24 6z"/>
-  <path fill="#7e14ff" d="M24 12l-8 4v6c0 5 3.5 9 8 10.5V12z"/>
-  <path fill="#ede6ff" d="M24 16l-5 2.5v3.5c0 3 2 5.5 5 6.5V16z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
+  <defs>
+    <linearGradient id="signal" x1="8" y1="6" x2="40" y2="44" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38d6e8" />
+      <stop offset="1" stop-color="#5b8cff" />
+    </linearGradient>
+  </defs>
+  <rect width="48" height="48" rx="12" fill="#06090f" />
+  <path d="M24 8l12 4.5v10.7c0 7.6-5 14.2-12 16.8-7-2.6-12-9.2-12-16.8V12.5L24 8z" stroke="url(#signal)" stroke-width="2.2" />
+  <path d="M16.5 24h4l2.5-5 3 10 2.5-5h3.5" stroke="url(#signal)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
 </svg>

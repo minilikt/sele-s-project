@@ -1,0 +1,32 @@
+title: Multiple Failed Logons for a Single Account
+id: sigma-win-4625-bruteforce
+status: stable
+description: >
+  Detects a burst of failed authentication attempts (Event ID 4625) against a
+  single account inside a short window. A burst is consistent with password
+  guessing or brute force, but may also be a stale cached credential or a user
+  repeatedly mistyping a password.
+author: SENTINEL SIEM
+date: 2026/10/25
+references:
+  - https://attack.mitre.org/techniques/T1110/
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4625
+  filter_machine_accounts:
+    TargetUserName|endswith: '$'
+  condition: selection and not filter_machine_accounts
+level: high
+tags:
+  - attack.credential_access
+  - attack.t1110
+falsepositives:
+  - Service account configured with an expired password
+  - User repeatedly mistyping a password
+group_by:
+  - TargetUserName
+threshold: 5
+timeframe: 10m

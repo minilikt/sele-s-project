@@ -1,17 +1,30 @@
 """
-Correlation engine for the SIEM backend.
+Entity-graph correlation engine.
 
-Groups related alerts into Incidents, builds timelines, detects attack chains,
-and maps MITRE ATT&CK techniques.
+Alerts are grouped when they share a *strong* entity — a user account or an IP
+address — inside a configurable time window. Hosts are also used, but only when
+a host is not so busy that everything on it would collapse into one incident.
+This replaces the previous account-string grouping, which missed lateral
+movement (same user, different hosts) and credential reuse (same IP, different
+accounts).
+
+Each resulting incident carries:
+
+* the entity graph that explains *why* the alerts were grouped,
+* an ordered ATT&CK kill-chain analysis and confidence score,
+* a timeline ordered by detection time.
 """
 
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from models import Alert, Incident
+import entities as entity_mod
+import killchain
+from models import Alert
 
 
 def _utcnow() -> datetime:
@@ -23,22 +36,46 @@ def _parse_ts(ts) -> datetime:
         if ts.tzinfo is None:
             return ts.replace(tzinfo=timezone.utc)
         return ts
-    return datetime.fromisoformat(str(ts)).replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return _utcnow()
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 _SEVERITY_ORDER = {"Low": 0, "Medium": 1, "High": 2, "Critical": 3}
 
 
-def _worst_severity(severities: List[str]) -> str:
-    """Return the highest severity from a list."""
+def _worst_severity(severities: Iterable[str]) -> str:
     return max(severities, key=lambda s: _SEVERITY_ORDER.get(s, 0), default="Medium")
 
 
+class _UnionFind:
+    def __init__(self, items: Iterable[int]):
+        self.parent = {item: item for item in items}
+
+    def find(self, item: int) -> int:
+        root = item
+        while self.parent[root] != root:
+            root = self.parent[root]
+        while self.parent[item] != root:
+            self.parent[item], item = root, self.parent[item]
+        return root
+
+    def union(self, left: int, right: int) -> None:
+        left_root, right_root = self.find(left), self.find(right)
+        if left_root != right_root:
+            self.parent[right_root] = left_root
+
+    def groups(self) -> List[List[int]]:
+        grouped: Dict[int, List[int]] = defaultdict(list)
+        for item in self.parent:
+            grouped[self.find(item)].append(item)
+        return list(grouped.values())
+
+
 class CorrelationEngine:
-    """
-    Correlate alerts into incidents by detecting attack chains and grouping
-    related activity.
-    """
+    """Group alerts by shared entities and score their ATT&CK progression."""
 
     def __init__(
         self,
@@ -46,219 +83,182 @@ class CorrelationEngine:
         events: list | None = None,
         *,
         time_window_minutes: int = 60,
+        max_host_fanout: int = 6,
+        event_times: Dict[int, datetime] | None = None,
     ):
-        self.alerts = alerts
+        self.alerts = list(alerts)
         self.events = events or []
         self.window = timedelta(minutes=time_window_minutes)
+        self.max_host_fanout = max_host_fanout
+        # Alert creation time is when the rule ran, which for a batch scan is
+        # identical for every alert. Window ordering must use the time of the
+        # underlying event instead.
+        self.event_times = event_times or {}
+
+    def _alert_time(self, alert: Alert) -> datetime:
+        return _parse_ts(self.event_times.get(alert.id) or alert.created_at)
 
     # ── Public entry point ────────────────────────────────────────────────
 
     def correlate(self) -> List[Dict[str, Any]]:
-        """Run all correlation patterns and return incident dicts."""
+        """Return one incident dict per connected group of two or more alerts."""
+        if not self.alerts:
+            return []
+
+        by_id = {alert.id: alert for alert in self.alerts}
+        alert_entities: Dict[int, Set[entity_mod.Entity]] = {
+            alert.id: entity_mod.entities_from_alert(alert) for alert in self.alerts
+        }
+
+        index: Dict[str, Set[int]] = defaultdict(set)
+        for alert_id, ents in alert_entities.items():
+            for entity in ents:
+                index[entity.key].add(alert_id)
+
+        union = _UnionFind(by_id.keys())
+        for key, alert_ids in index.items():
+            if not alert_ids:
+                continue
+            entity_type = key.split(":", 1)[0]
+            if entity_type == "host" and len(alert_ids) > self.max_host_fanout:
+                # A domain controller legitimately sees everyone; linking on it
+                # would merge unrelated incidents.
+                continue
+            ordered = sorted(
+                alert_ids, key=lambda alert_id: self._alert_time(by_id[alert_id])
+            )
+            self._connect_within_window(ordered, by_id, union)
+
         incidents: List[Dict[str, Any]] = []
-        used_alert_ids: Set[int] = set()
+        for group_ids in union.groups():
+            group = sorted(
+                (by_id[alert_id] for alert_id in group_ids if alert_id in by_id),
+                key=self._alert_time,
+            )
+            # Union-find chains alerts transitively (A~B, B~C), which can span
+            # much longer than the requested window. Partition each component so
+            # every incident is bounded by the window as analysts expect.
+            for chunk in self._window_slices(group):
+                if len(chunk) < 2:
+                    continue
+                incidents.append(self._build_incident(chunk, alert_entities, index))
 
-        # Run specific chains first (more specific = higher priority)
-        for chain_fn in (
-            self._credential_compromise_chain,
-            self._persistence_chain,
-        ):
-            for inc in chain_fn():
-                inc_alert_ids = set(json.loads(inc["alert_ids"]))
-                if not inc_alert_ids & used_alert_ids:
-                    incidents.append(inc)
-                    used_alert_ids |= inc_alert_ids
-
-        # General correlation for remaining alerts
-        remaining = [a for a in self.alerts if a.id not in used_alert_ids]
-        for inc in self._general_correlation(remaining):
-            inc_alert_ids = set(json.loads(inc["alert_ids"]))
-            if not inc_alert_ids & used_alert_ids:
-                incidents.append(inc)
-                used_alert_ids |= inc_alert_ids
-
+        incidents.sort(key=lambda inc: (-inc["chain_score"], inc["title"]))
         return incidents
 
-    # ── Chain 1: Credential Compromise ────────────────────────────────────
+    # ── Grouping ──────────────────────────────────────────────────────────
 
-    def _credential_compromise_chain(self) -> List[Dict[str, Any]]:
-        """
-        Brute-force alerts + successful-login alert + any subsequent suspicious
-        activity from the same account.
-        """
-        incidents: List[Dict[str, Any]] = []
+    def _window_slices(self, group: List[Alert]) -> List[List[Alert]]:
+        """Split a time-sorted group into chunks that each fit the window."""
+        chunks: List[List[Alert]] = []
+        current: List[Alert] = []
+        anchor: Optional[datetime] = None
 
-        brute_alerts = [a for a in self.alerts if a.rule_id in ("BRUTE_FORCE_001", "BRUTE_FORCE_002")]
-        if not brute_alerts:
-            return incidents
+        for alert in group:
+            timestamp = self._alert_time(alert)
+            if anchor is None or timestamp - anchor <= self.window:
+                current.append(alert)
+                anchor = anchor or timestamp
+            else:
+                chunks.append(current)
+                current = [alert]
+                anchor = timestamp
 
-        # Index all alerts by account extracted from evidence
-        account_alerts: Dict[str, List[Alert]] = {}
-        for a in self.alerts:
-            acct = self._extract_account(a)
-            if acct:
-                account_alerts.setdefault(acct, []).append(a)
+        if current:
+            chunks.append(current)
+        return chunks
 
-        seen_accounts: Set[str] = set()
-        for ba in brute_alerts:
-            acct = self._extract_account(ba)
-            if not acct or acct in seen_accounts:
-                continue
-            seen_accounts.add(acct)
+    def _connect_within_window(self, alert_ids: List[int], by_id: Dict[int, Alert],
+                               union: _UnionFind) -> None:
+        previous_id: Optional[int] = None
+        previous_ts: Optional[datetime] = None
 
-            related = account_alerts.get(acct, [])
-            if len(related) < 2:
-                continue
+        for alert_id in alert_ids:
+            timestamp = self._alert_time(by_id[alert_id])
+            if previous_ts is not None and timestamp - previous_ts <= self.window:
+                union.union(previous_id, alert_id)
+            previous_id, previous_ts = alert_id, timestamp
 
-            related.sort(key=lambda a: _parse_ts(a.created_at))
-            alert_ids = [a.id for a in related]
-            timeline = self._build_timeline(related)
-            techniques = self._collect_techniques(related)
+    # ── Incident construction ─────────────────────────────────────────────
 
-            incidents.append({
-                "title": f"Credential Compromise Chain — {acct}",
-                "description": (
-                    f"A credential-based attack chain targeting account '{acct}' "
-                    f"was detected. {len(related)} related alerts were correlated, "
-                    f"starting with brute-force activity."
-                ),
-                "severity": _worst_severity([a.severity for a in related]),
-                "status": "Open",
-                "alert_ids": json.dumps(alert_ids),
-                "timeline": json.dumps(timeline),
-                "mitre_techniques": json.dumps(techniques),
-                "investigation_notes": None,
-                "created_at": _utcnow(),
-                "updated_at": _utcnow(),
-            })
-        return incidents
+    def _build_incident(self, group: List[Alert],
+                        alert_entities: Dict[int, Set[entity_mod.Entity]],
+                        global_index: Dict[str, Set[int]]) -> Dict[str, Any]:
+        group.sort(key=self._alert_time)
 
-    # ── Chain 2: Persistence ──────────────────────────────────────────────
+        shared: Set[entity_mod.Entity] = set()
+        for alert in group:
+            shared |= alert_entities.get(alert.id, set())
 
-    def _persistence_chain(self) -> List[Dict[str, Any]]:
-        """
-        Account creation + privilege escalation + scheduled-task creation.
-        """
-        incidents: List[Dict[str, Any]] = []
+        graph = entity_mod.build_graph(
+            {entity.key: (global_index.get(entity.key, set()) & {a.id for a in group})
+             for entity in shared}
+        )
 
-        acct_create = [a for a in self.alerts if a.rule_id == "ACCOUNT_MANIP_001"]
-        priv_esc = [a for a in self.alerts if a.rule_id == "PRIV_ESC_001"]
-        sched = [a for a in self.alerts if a.rule_id == "PERSIST_001"]
+        chain = killchain.analyse(
+            group, event_times={alert.id: self._alert_time(alert) for alert in group}
+        )
+        severity = chain["severity"]
+        if chain["score"] >= 70 and severity != "Critical":
+            severity = "Critical" if severity == "High" else "High"
 
-        if not acct_create:
-            return incidents
+        title = self._title(group, shared, chain)
+        description = self._description(group, shared, chain)
 
-        # Try to combine
-        chain: List[Alert] = []
-        chain.extend(acct_create)
-        chain.extend(priv_esc)
-        chain.extend(sched)
-
-        if len(chain) < 2:
-            return incidents
-
-        chain.sort(key=lambda a: _parse_ts(a.created_at))
-        alert_ids = [a.id for a in chain]
-        timeline = self._build_timeline(chain)
-        techniques = self._collect_techniques(chain)
-
-        incidents.append({
-            "title": "Persistence Chain — Account Creation + Privilege Escalation",
-            "description": (
-                f"A persistence chain was detected involving account creation, "
-                f"privilege escalation, and/or scheduled task creation. "
-                f"{len(chain)} alerts correlated."
-            ),
-            "severity": _worst_severity([a.severity for a in chain]),
+        return {
+            "title": title,
+            "description": description,
+            "severity": severity,
             "status": "Open",
-            "alert_ids": json.dumps(alert_ids),
-            "timeline": json.dumps(timeline),
-            "mitre_techniques": json.dumps(techniques),
+            "alert_ids": json.dumps([alert.id for alert in group]),
+            "timeline": json.dumps(self._build_timeline(group)),
+            "mitre_techniques": json.dumps(chain["techniques"]),
             "investigation_notes": None,
             "created_at": _utcnow(),
             "updated_at": _utcnow(),
-        })
-        return incidents
-
-    # ── General Correlation ───────────────────────────────────────────────
-
-    def _general_correlation(self, alerts: List[Alert]) -> List[Dict[str, Any]]:
-        """
-        Group remaining alerts that share the same account within the time
-        window.
-        """
-        incidents: List[Dict[str, Any]] = []
-        if not alerts:
-            return incidents
-
-        by_account: Dict[str, List[Alert]] = {}
-        for a in alerts:
-            acct = self._extract_account(a) or "unknown"
-            by_account.setdefault(acct, []).append(a)
-
-        for acct, group in by_account.items():
-            if len(group) < 2:
-                continue
-            group.sort(key=lambda a: _parse_ts(a.created_at))
-            # Check if they fall within the time window
-            first_ts = _parse_ts(group[0].created_at)
-            last_ts = _parse_ts(group[-1].created_at)
-            if last_ts - first_ts > self.window:
-                continue
-            alert_ids = [a.id for a in group]
-            timeline = self._build_timeline(group)
-            techniques = self._collect_techniques(group)
-            incidents.append({
-                "title": f"Correlated Alerts — {acct}",
-                "description": (
-                    f"{len(group)} alerts for account '{acct}' were detected "
-                    f"within a {int(self.window.total_seconds() // 60)}-minute window."
-                ),
-                "severity": _worst_severity([a.severity for a in group]),
-                "status": "Open",
-                "alert_ids": json.dumps(alert_ids),
-                "timeline": json.dumps(timeline),
-                "mitre_techniques": json.dumps(techniques),
-                "investigation_notes": None,
-                "created_at": _utcnow(),
-                "updated_at": _utcnow(),
-            })
-        return incidents
-
-    # ── Helpers ───────────────────────────────────────────────────────────
+            "entities": json.dumps([entity.to_dict() for entity in sorted(shared, key=lambda e: e.key)]),
+            "entity_graph": json.dumps(graph),
+            "attack_chain": json.dumps(chain),
+            "chain_score": chain["score"],
+        }
 
     @staticmethod
-    def _extract_account(alert: Alert) -> str | None:
-        try:
-            ev = json.loads(alert.evidence) if isinstance(alert.evidence, str) else alert.evidence
-            return ev.get("account")
-        except Exception:
-            return None
+    def _title(group: List[Alert], shared: Set[entity_mod.Entity],
+               chain: Dict[str, Any]) -> str:
+        primary = entity_mod.primary_entity(shared)
+        subject = f"{primary.type} {primary.value}" if primary else f"{len(group)} alerts"
+
+        if chain["covered_count"] >= 3:
+            return f"Attack Chain: {subject}"
+        if any("brute" in (alert.rule_id or "").lower() or "1110" in (alert.mitre_technique_id or "")
+               for alert in group):
+            return f"Credential Compromise Chain: {subject}"
+        return f"Correlated Activity: {subject}"
 
     @staticmethod
-    def _build_timeline(alerts: List[Alert]) -> List[Dict[str, str]]:
-        timeline: List[Dict[str, str]] = []
-        for a in alerts:
-            timeline.append({
-                "time": _parse_ts(a.created_at).isoformat(),
-                "alert_id": a.id,
-                "rule": a.rule_name,
-                "severity": a.severity,
-                "description": a.description[:200],
-            })
+    def _description(group: List[Alert], shared: Set[entity_mod.Entity],
+                     chain: Dict[str, Any]) -> str:
+        entity_text = entity_mod.describe(shared) or "unknown entities"
+        return (
+            f"{len(group)} alert(s) linked by shared entities ({entity_text}). "
+            f"{chain['summary']}"
+        )
+
+    # ── Serialisation helpers ─────────────────────────────────────────────
+
+    def _build_timeline(self, group: List[Alert]) -> List[Dict[str, Any]]:
+        timeline: List[Dict[str, Any]] = []
+        for alert in group:
+            timeline.append(
+                {
+                    "time": self._alert_time(alert).isoformat(),
+                    "alert_id": alert.id,
+                    "rule": alert.rule_name,
+                    "rule_id": alert.rule_id,
+                    "severity": alert.severity,
+                    "tactic": killchain.normalise_tactic(getattr(alert, "mitre_tactic", None)),
+                    "technique": alert.mitre_technique_id,
+                    "description": (alert.description or "")[:200],
+                }
+            )
         return timeline
-
-    @staticmethod
-    def _collect_techniques(alerts: List[Alert]) -> List[Dict[str, str]]:
-        seen: Set[str] = set()
-        techniques: List[Dict[str, str]] = []
-        for a in alerts:
-            tid = a.mitre_technique_id
-            if tid and tid not in seen:
-                seen.add(tid)
-                techniques.append({
-                    "id": tid,
-                    "name": a.mitre_technique_name or "",
-                    "tactic": a.mitre_tactic or "",
-                })
-        return techniques

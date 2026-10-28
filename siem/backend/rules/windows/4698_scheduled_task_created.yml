@@ -1,0 +1,27 @@
+title: Scheduled Task Created
+id: sigma-win-4698-scheduled-task-created
+status: stable
+description: >
+  Detects creation of a scheduled task (Event ID 4698). Scheduled tasks are a
+  durable persistence mechanism and are frequently used to re-launch payloads
+  after reboot.
+author: SENTINEL SIEM
+date: 2026/10/25
+references:
+  - https://attack.mitre.org/techniques/T1053/005/
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4698
+  filter_microsoft_tasks:
+    TaskName|startswith: '\Microsoft\'
+  condition: selection and not filter_microsoft_tasks
+level: medium
+tags:
+  - attack.persistence
+  - attack.t1053.005
+falsepositives:
+  - Third-party software installers registering updater tasks
+  - Legitimate administrative automation

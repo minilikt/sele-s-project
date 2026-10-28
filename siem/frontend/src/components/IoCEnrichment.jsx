@@ -84,7 +84,7 @@ export default function IoCEnrichment() {
       <div className="card">
         <h2 className="card-title">Scan Alerts for Indicators</h2>
         <button className="btn btn-primary" onClick={handleScan} disabled={scanLoading}>
-          {scanLoading ? 'Scanning alerts...' : '🧬 Scan Alerts for IoCs'}
+          {scanLoading ? 'Scanning alerts...' : 'Scan alerts for IoCs'}
         </button>
         {scanResult && (
           <div className="result-card">

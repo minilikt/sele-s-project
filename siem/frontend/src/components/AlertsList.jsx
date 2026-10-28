@@ -3,6 +3,7 @@ import { fetchAlerts, updateAlertStatus } from '../api';
 import SeverityBadge from './SeverityBadge';
 import StatusBadge from './StatusBadge';
 import ExportButtons from './ExportButtons';
+import { hasRole } from '../session';
 
 function formatTime(ts) {
   if (!ts) return '—';
@@ -16,6 +17,7 @@ function confidenceColor(c) {
 }
 
 export default function AlertsList({ onNavigate }) {
+  const canWrite = hasRole('analyst');
   const [alerts, setAlerts] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -126,6 +128,8 @@ export default function AlertsList({ onNavigate }) {
                       <select
                         className="inline-select"
                         value={a.status || 'new'}
+                        disabled={!canWrite}
+                        title={canWrite ? '' : 'Analyst role required'}
                         onChange={(e) => handleStatusChange(a.id, e.target.value, e)}
                       >
                         <option value="new">New</option>

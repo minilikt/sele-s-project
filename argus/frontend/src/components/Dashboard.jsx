@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { fetchDashboardStats, fetchAssets, runScan } from '../api';
-import SeverityBadge from './SeverityBadge';
 import StatusBadge from './StatusBadge';
 
 function formatTime(ts) {
@@ -55,7 +54,7 @@ export default function Dashboard({ onNavigate }) {
       <div className="page-header">
         <h1 className="page-title">Attack Surface Dashboard</h1>
         <button className="btn btn-primary" onClick={handleScan} disabled={scanning}>
-          {scanning ? '⏳ Scanning...' : '🔎 Run Scan'}
+          {scanning ? 'Scanning...' : 'Run scan'}
         </button>
       </div>
 

@@ -150,7 +150,7 @@ export default function AlertDetail({ alertId, onNavigate }) {
           className="btn btn-primary"
           onClick={() => onNavigate('ai', { contextType: 'alert', contextId: alertId })}
         >
-          🤖 Ask AI About This Alert
+          Ask AI about this alert
         </button>
       </div>
     </div>

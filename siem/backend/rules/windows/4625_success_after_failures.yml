@@ -1,0 +1,41 @@
+title: Successful Logon After Repeated Failures
+id: sigma-win-bruteforce-success
+status: stable
+description: >
+  Detects a successful logon (Event ID 4624) that follows at least three
+  failed attempts (Event ID 4625) for the same account within 15 minutes.
+  This ordering is a stronger signal of credential compromise than failures
+  alone, but does not by itself prove an attacker succeeded.
+author: SENTINEL SIEM
+date: 2026/10/25
+references:
+  - https://attack.mitre.org/techniques/T1110/
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4625
+  condition: selection
+correlation:
+  type: temporal_ordered
+  group_by:
+    - TargetUserName
+  timeframe: 15m
+  steps:
+    - name: failures
+      selection:
+        EventID: 4625
+      min_count: 3
+    - name: success
+      selection:
+        EventID: 4624
+      min_count: 1
+level: critical
+tags:
+  - attack.credential_access
+  - attack.t1110
+  - attack.t1078
+falsepositives:
+  - User who mistyped a password several times before succeeding
+  - Password manager retry behaviour

@@ -12,13 +12,13 @@ export default function ExportButtons({ scope }) {
   return (
     <div className="export-bar">
       {scope === 'findings' && (
-        <button className="btn btn-secondary btn-small" onClick={() => run(exportFindingsJSON)}>⬇ Findings JSON</button>
+        <button className="btn btn-secondary btn-small" onClick={() => run(exportFindingsJSON)}>Findings JSON</button>
       )}
       {scope === 'assets' && (
-        <button className="btn btn-secondary btn-small" onClick={() => run(exportAssetsJSON)}>⬇ Assets JSON</button>
+        <button className="btn btn-secondary btn-small" onClick={() => run(exportAssetsJSON)}>Assets JSON</button>
       )}
       {scope === 'report' && (
-        <button className="btn btn-secondary btn-small" onClick={() => run(exportReportTxt)}>⬇ Report (.txt)</button>
+        <button className="btn btn-secondary btn-small" onClick={() => run(exportReportTxt)}>Report (.txt)</button>
       )}
     </div>
   );

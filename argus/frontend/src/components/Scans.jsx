@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { runScan, fetchScanHistory } from '../api';
 import StatusBadge from './StatusBadge';
 import ExportButtons from './ExportButtons';
+import { hasRole } from '../session';
 
 function formatTime(ts) {
   if (!ts) return '—';
@@ -9,6 +10,7 @@ function formatTime(ts) {
 }
 
 export default function Scans() {
+  const canWrite = hasRole('analyst');
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -44,10 +46,10 @@ export default function Scans() {
       <div className="card">
         <h2 className="card-title">Run a Scan</h2>
         <p className="card-text">
-          Scans the target domain for subdomains, checks web services, TLS
-          certificates and security headers, then scores the findings. The
-          default lab domain is safe and self-contained — only scan domains you
-          own or are authorised to assess.
+          Runs the deterministic lab inventory for <code>acme-lab.local</code>:
+          subdomains, TLS certificates and security headers, then scores the
+          findings. This build does not perform real network discovery. Only
+          assess domains you own or are authorised to assess.
         </p>
         <div className="scan-form">
           <input
@@ -57,8 +59,8 @@ export default function Scans() {
             onChange={(e) => setDomain(e.target.value)}
             placeholder="target domain"
           />
-          <button className="btn btn-primary" onClick={handleScan} disabled={scanning || !domain.trim()}>
-            {scanning ? '⏳ Scanning...' : '🔎 Start Scan'}
+          <button className="btn btn-primary" onClick={handleScan} disabled={scanning || !domain.trim() || !canWrite} title={canWrite ? '' : 'Analyst role required'}>
+            {scanning ? 'Scanning...' : 'Start scan'}
           </button>
         </div>
         {result && (

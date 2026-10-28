@@ -57,7 +57,7 @@ export default function AIAssistant() {
             risk scores in the database — no invented evidence.
           </p>
           <button className="btn btn-primary" onClick={handleReport} disabled={reportLoading}>
-            {reportLoading ? 'Generating...' : '📄 Generate Security Report'}
+            {reportLoading ? 'Generating...' : 'Generate security report'}
           </button>
           {report && (
             <div className="result-card">
@@ -71,7 +71,6 @@ export default function AIAssistant() {
           <div className="chat-messages">
             {messages.length === 0 && (
               <div className="chat-empty">
-                <span className="chat-empty-icon">🛰️</span>
                 <p>Ask me about your attack surface, findings, or remediation priorities.</p>
                 <p className="text-muted">Run a scan first to populate the analysis.</p>
               </div>
@@ -79,7 +78,7 @@ export default function AIAssistant() {
             {messages.map((msg, idx) => (
               <div key={idx} className={`chat-message ${msg.role}`}>
                 <div className="chat-message-header">
-                  {msg.role === 'user' ? '👤 You' : '🤖 ARGUS AI'}
+                  {msg.role === 'user' ? 'You' : 'ARGUS AI'}
                 </div>
                 <div className="chat-message-content">
                   {msg.sections ? (
@@ -97,7 +96,7 @@ export default function AIAssistant() {
             ))}
             {loading && (
               <div className="chat-message assistant">
-                <div className="chat-message-header">🤖 ARGUS AI</div>
+                <div className="chat-message-header">ARGUS AI</div>
                 <div className="chat-message-content">
                   <div className="typing-indicator"><span /><span /><span /></div>
                 </div>

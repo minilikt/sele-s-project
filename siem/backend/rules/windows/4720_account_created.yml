@@ -1,0 +1,25 @@
+title: User Account Created
+id: sigma-win-4720-account-created
+status: stable
+description: >
+  Detects creation of a local or domain user account (Event ID 4720).
+  Account creation is legitimate during onboarding but is also a common
+  persistence technique, especially outside business hours or on servers.
+author: SENTINEL SIEM
+date: 2026/10/25
+references:
+  - https://attack.mitre.org/techniques/T1136/001/
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4720
+  condition: selection
+level: medium
+tags:
+  - attack.persistence
+  - attack.t1136.001
+falsepositives:
+  - Routine onboarding performed by IT staff
+  - Automated provisioning systems

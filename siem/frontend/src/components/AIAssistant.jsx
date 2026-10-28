@@ -132,7 +132,6 @@ export default function AIAssistant({ initialContext }) {
           <div className="chat-messages">
             {messages.length === 0 && (
               <div className="chat-empty">
-                <span className="chat-empty-icon">🤖</span>
                 <p>Ask me anything about your security events, alerts, or incidents.</p>
                 <p className="text-muted">Select a context from the left panel for more targeted analysis.</p>
               </div>
@@ -140,7 +139,7 @@ export default function AIAssistant({ initialContext }) {
             {messages.map((msg, idx) => (
               <div key={idx} className={`chat-message ${msg.role}`}>
                 <div className="chat-message-header">
-                  {msg.role === 'user' ? '👤 You' : '🤖 SENTINEL AI'}
+                  {msg.role === 'user' ? 'You' : 'SENTINEL AI'}
                 </div>
                 <div className="chat-message-content">
                   {msg.sections ? (
@@ -158,7 +157,7 @@ export default function AIAssistant({ initialContext }) {
             ))}
             {loading && (
               <div className="chat-message assistant">
-                <div className="chat-message-header">🤖 SENTINEL AI</div>
+                <div className="chat-message-header">SENTINEL AI</div>
                 <div className="chat-message-content">
                   <div className="typing-indicator">
                     <span /><span /><span />

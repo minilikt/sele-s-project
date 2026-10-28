@@ -1,0 +1,30 @@
+title: New Windows Service Installed
+id: sigma-win-7045-service-installed
+status: stable
+description: >
+  Detects installation of a new Windows service (Event ID 7045). Service
+  creation is a common persistence and privilege-escalation technique, and is
+  frequently abused to run a payload as SYSTEM.
+author: SENTINEL SIEM
+date: 2026/10/25
+references:
+  - https://attack.mitre.org/techniques/T1543/003/
+logsource:
+  product: windows
+  service: system
+detection:
+  selection:
+    EventID: 7045
+  filter_known_publishers:
+    ServiceName|startswith:
+      - 'Microsoft '
+      - 'Windows '
+  condition: selection and not filter_known_publishers
+level: high
+tags:
+  - attack.persistence
+  - attack.privilege_escalation
+  - attack.t1543.003
+falsepositives:
+  - Legitimate software installation by IT
+  - Monitoring agents deployed by the organisation

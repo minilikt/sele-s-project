@@ -158,21 +158,34 @@ def _lab_asset(hostname: str, index: int, now: datetime, rng: random.Random) -> 
 
 
 def generate_lab_inventory(domain: str, scan_index: int = 0) -> List[Dict[str, Any]]:
-    """Return the deterministic asset inventory for *scan_index*-th scan."""
-    rng = random.Random(f"{domain}:{scan_index}")
+    """Return the deterministic asset inventory for *scan_index*-th scan.
+
+    The base set of subdomains is stable for a domain: re-running a scan must
+    not invent a different 40 hosts, or change detection becomes noise. Asset
+    attributes (status, headers, certificate) evolve per scan, and a few late
+    subdomains appear on later scans to exercise the "new asset" path.
+    """
+    # Stable base inventory: seed only on the domain, never the scan index.
+    base_rng = random.Random(f"{domain}:inventory")
     now = datetime.now(timezone.utc)
     assets: List[Dict[str, Any]] = [{"hostname": domain, "asset_type": "Apex", "ip": "10.20.1.1",
                                      "status": "Online", "is_web": True, "http_status": 200,
                                      "open_ports": [80, 443], "tls_expiry": (now + timedelta(days=120)).isoformat(),
-                                     "security_headers": {"strict-transport-security": True}, "is_new": False}]
+                                     "security_headers": {
+                                         "strict-transport-security": True,
+                                         "content-security-policy": False,
+                                         "x-content-type-options": True,
+                                         "x-frame-options": True,
+                                     }, "is_new": False}]
     pool = list(_SUBDOMAIN_POOL)
-    rng.shuffle(pool)
-    count = 40
-    chosen = pool[:count]
-    # Later scans introduce new subdomains (change detection)
+    base_rng.shuffle(pool)
+    chosen = pool[:40]
     for i, late in enumerate(_LATE_SUBDOMAINS):
         if scan_index > i:
             chosen.append(late)
+
+    # Attributes evolve per scan.
+    rng = random.Random(f"{domain}:{scan_index}")
     for sub in chosen:
         assets.append(_lab_asset(f"{sub}.{domain}", len(assets), now, rng))
     return assets
@@ -272,8 +285,10 @@ def generate_lab_findings(asset: Dict[str, Any], scan_index: int = 0) -> List[Di
 def scan_lab(domain: str, scan_index: int = 0) -> Dict[str, Any]:
     """Produce the full lab result for a scan: assets plus computed findings."""
     assets = generate_lab_inventory(domain, scan_index)
-    new_assets = [a for a in assets if "new" in a["hostname"].split(".")[0] or a["hostname"] in
-                  [f"{s}.{domain}" for s in _LATE_SUBDOMAINS]]
+    new_assets = []
+    if 0 < scan_index <= len(_LATE_SUBDOMAINS):
+        introduced = f"{_LATE_SUBDOMAINS[scan_index - 1]}.{domain}"
+        new_assets = [a for a in assets if a["hostname"] == introduced]
     return {
         "domain": domain,
         "scan_index": scan_index,

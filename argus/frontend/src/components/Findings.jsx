@@ -3,6 +3,7 @@ import { fetchFindings, updateFindingStatus } from '../api';
 import SeverityBadge from './SeverityBadge';
 import StatusBadge from './StatusBadge';
 import ExportButtons from './ExportButtons';
+import { hasRole } from '../session';
 
 function formatTime(ts) {
   if (!ts) return '—';
@@ -16,6 +17,7 @@ function confidenceColor(c) {
 }
 
 export default function Findings() {
+  const canWrite = hasRole('analyst');
   const [findings, setFindings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ severity: '', category: '', status: '' });
@@ -93,7 +95,7 @@ export default function Findings() {
                   <tr className="clickable-row" onClick={() => setExpandedId(expandedId === f.id ? null : f.id)}>
                     <td className="mono" style={{ fontWeight: 700, color: confidenceColor(f.risk_score) }}>{f.risk_score}</td>
                     <td><SeverityBadge severity={f.severity} /></td>
-                    <td>{f.title}</td>
+                    <td>{f.title}{f.stale && <span className="badge stale-badge">stale</span>}</td>
                     <td className="mono">{f.asset_hostname}</td>
                     <td>{f.category}</td>
                     <td><StatusBadge status={f.status} /></td>
@@ -101,6 +103,8 @@ export default function Findings() {
                       <select
                         className="inline-select"
                         value={f.status || 'Open'}
+                        disabled={!canWrite}
+                        title={canWrite ? '' : 'Analyst role required'}
                         onChange={(e) => handleStatusChange(f.id, e.target.value, e)}
                       >
                         <option value="Open">Open</option>
@@ -115,6 +119,13 @@ export default function Findings() {
                         <p className="card-text">{f.detail}</p>
                         <p className="text-muted">Recommendation: {f.recommendation}</p>
                         <p className="text-muted">Exposure: {f.exposure} · Confidence: {Math.round((f.confidence || 0) * 100)}% · First seen {formatTime(f.first_seen)}</p>
+                        <p className="text-muted">
+                          Last seen {formatTime(f.last_seen)} · Observed {f.dedup_count || 1}× · Reopened {f.reopened_count || 0}×
+                          {f.assigned_to ? ` · Assigned to ${f.assigned_to}` : ''}
+                        </p>
+                        {f.resolution_note && (
+                          <p className="text-muted">Resolution note: {f.resolution_note}</p>
+                        )}
                       </td>
                     </tr>
                   )}

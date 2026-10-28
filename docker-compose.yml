@@ -1,0 +1,99 @@
+name: sentinel
+
+# Local/demo stack: PostgreSQL + FastAPI + nginx-served frontend.
+#
+# The defaults below are for localhost only. Before exposing this stack, set
+# SIEM_ENV=production, SIEM_JWT_SECRET and SIEM_ADMIN_PASSWORD in .env and put a
+# TLS-terminating proxy in front of the frontend.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-siem}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-siem}
+      POSTGRES_DB: ${POSTGRES_DB:-siem}
+    volumes:
+      - siem-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-siem} -d ${POSTGRES_DB:-siem}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  siem-backend:
+    build:
+      context: ./siem/backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SIEM_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-siem}:${POSTGRES_PASSWORD:-siem}@postgres:5432/${POSTGRES_DB:-siem}
+      SIEM_ENV: ${SIEM_ENV:-development}
+      SIEM_JWT_SECRET: ${SIEM_JWT_SECRET:-dev-only-secret-change-before-exposing}
+      SIEM_JWT_MINUTES: ${SIEM_JWT_MINUTES:-480}
+      SIEM_ADMIN_USER: ${SIEM_ADMIN_USER:-admin}
+      SIEM_ADMIN_PASSWORD: ${SIEM_ADMIN_PASSWORD:-admin}
+    ports:
+      - "8000:8000"
+
+  siem-frontend:
+    build:
+      context: ./siem/frontend
+      args:
+        VITE_API_BASE: /api
+    restart: unless-stopped
+    depends_on:
+      siem-backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+
+  argus-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${ARGUS_DB_USER:-argus}
+      POSTGRES_PASSWORD: ${ARGUS_DB_PASSWORD:-argus}
+      POSTGRES_DB: ${ARGUS_DB_NAME:-argus}
+    volumes:
+      - argus-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ARGUS_DB_USER:-argus} -d ${ARGUS_DB_NAME:-argus}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  argus-backend:
+    build:
+      context: ./argus/backend
+    restart: unless-stopped
+    depends_on:
+      argus-postgres:
+        condition: service_healthy
+    environment:
+      ARGUS_DATABASE_URL: postgresql+psycopg://${ARGUS_DB_USER:-argus}:${ARGUS_DB_PASSWORD:-argus}@argus-postgres:5432/${ARGUS_DB_NAME:-argus}
+      ARGUS_ENV: ${ARGUS_ENV:-development}
+      ARGUS_JWT_SECRET: ${ARGUS_JWT_SECRET:-dev-only-secret-change-before-exposing}
+      ARGUS_JWT_MINUTES: ${ARGUS_JWT_MINUTES:-480}
+      ARGUS_ADMIN_USER: ${ARGUS_ADMIN_USER:-admin}
+      ARGUS_ADMIN_PASSWORD: ${ARGUS_ADMIN_PASSWORD:-admin}
+    ports:
+      - "8001:8000"
+
+  argus-frontend:
+    build:
+      context: ./argus/frontend
+      args:
+        VITE_API_BASE: /api
+    restart: unless-stopped
+    depends_on:
+      argus-backend:
+        condition: service_healthy
+    ports:
+      - "8081:80"
+
+volumes:
+  siem-pgdata:
+  argus-pgdata:

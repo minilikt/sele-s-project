@@ -3,8 +3,10 @@ SQLAlchemy ORM models for the ARGUS backend.
 
 Tables:
     - Asset: A discovered host/subdomain with its current state.
-    - Finding: A security issue detected against an asset.
+    - Finding: A security issue detected against an asset, deduplicated by
+      fingerprint across scans.
     - Scan: A single discovery/analysis run.
+    - User: Authentication and role assignment.
 """
 
 from datetime import datetime, timezone
@@ -35,6 +37,8 @@ class Asset(Base):
     tls_expiry = Column(DateTime, nullable=True)
     security_headers = Column(Text, nullable=False, default="{}")  # JSON dict
     last_result = Column(Text, nullable=True)
+    last_scan_id = Column(Integer, nullable=True, index=True)
+    risk_score = Column(Float, nullable=False, default=0.0)
 
 
 class Finding(Base):
@@ -54,6 +58,14 @@ class Finding(Base):
     status = Column(String(30), nullable=False, default="Open", index=True)  # Open/Acknowledged/Resolved
     first_seen = Column(DateTime, default=_utcnow, index=True)
     last_seen = Column(DateTime, default=_utcnow, index=True)
+    fingerprint = Column(String(64), nullable=True, index=True)
+    dedup_count = Column(Integer, nullable=False, default=1)
+    last_scan_id = Column(Integer, nullable=True, index=True)
+    acknowledged_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    reopened_count = Column(Integer, nullable=False, default=0)
+    assigned_to = Column(String(120), nullable=True)
+    resolution_note = Column(Text, nullable=True)
 
 
 class Scan(Base):
@@ -68,5 +80,21 @@ class Scan(Base):
     new_assets = Column(Integer, nullable=False, default=0)
     findings_discovered = Column(Integer, nullable=False, default=0)
     new_findings = Column(Integer, nullable=False, default=0)
+    reopened_findings = Column(Integer, nullable=False, default=0)
     risk_score = Column(Float, nullable=False, default=0.0)
     summary = Column(Text, nullable=True)
+
+
+class User(Base):
+    """A platform user for JWT authentication and role-based access."""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(120), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(20), nullable=False, default="viewer")  # admin | analyst | viewer
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=_utcnow)
+    last_login_at = Column(DateTime, nullable=True)
+

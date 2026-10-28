@@ -6,6 +6,8 @@ npm-debug.log*
 # Environment
 .env
 .env.*
+!.env.example
+.jwt_secret
 
 # Logs
 *.log

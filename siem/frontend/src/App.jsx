@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import './App.css';
 import Layout from './components/Layout';
+import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import EventsTable from './components/EventsTable';
 import AlertsList from './components/AlertsList';
@@ -12,9 +13,19 @@ import DetectionRules from './components/DetectionRules';
 import LogIngestion from './components/LogIngestion';
 import AIAssistant from './components/AIAssistant';
 import IoCEnrichment from './components/IoCEnrichment';
+import { clearSession, getToken, getUser, onLogout } from './session';
 
 export default function App() {
   const [page, setPage] = useState({ name: 'dashboard' });
+  const [user, setUser] = useState(getUser());
+
+  useEffect(() => onLogout(() => setUser(null)), []);
+
+  const handleLogout = () => {
+    clearSession();
+    setUser(null);
+    setPage({ name: 'dashboard' });
+  };
 
   const navigate = (name, param) => {
     if (typeof name === 'object' && name !== null) {
@@ -60,8 +71,24 @@ export default function App() {
     }
   };
 
+  if (!getToken() || !user) {
+    return (
+      <Login
+        onLogin={(nextUser) => {
+          setUser(nextUser);
+          setPage({ name: 'dashboard' });
+        }}
+      />
+    );
+  }
+
   return (
-    <Layout currentPage={page.name} onNavigate={navigate}>
+    <Layout
+      currentPage={page.name}
+      onNavigate={navigate}
+      user={user}
+      onLogout={handleLogout}
+    >
       {render()}
     </Layout>
   );

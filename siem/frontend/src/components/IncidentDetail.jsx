@@ -3,6 +3,9 @@ import { fetchIncident, updateIncidentStatus, generateReport } from '../api';
 import SeverityBadge from './SeverityBadge';
 import StatusBadge from './StatusBadge';
 import IncidentTimeline from './IncidentTimeline';
+import AttackChain from './AttackChain';
+import EntityGraph from './EntityGraph';
+import { hasRole } from '../session';
 
 function formatTime(ts) {
   if (!ts) return '—';
@@ -10,6 +13,7 @@ function formatTime(ts) {
 }
 
 export default function IncidentDetail({ incidentId, onNavigate }) {
+  const canWrite = hasRole('analyst');
   const [incident, setIncident] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notes, setNotes] = useState('');
@@ -60,6 +64,8 @@ export default function IncidentDetail({ incidentId, onNavigate }) {
           <select
             className="inline-select"
             value={incident.status || 'open'}
+            disabled={!canWrite}
+            title={canWrite ? '' : 'Analyst role required'}
             onChange={(e) => handleStatusChange(e.target.value)}
           >
             <option value="open">Open</option>
@@ -78,6 +84,22 @@ export default function IncidentDetail({ incidentId, onNavigate }) {
           <p className="card-text">{incident.description}</p>
         </div>
       )}
+
+      {/* Kill chain */}
+      <div className="card">
+        <h2 className="card-title">ATT&CK Kill Chain</h2>
+        <AttackChain chain={incident.attack_chain} />
+      </div>
+
+      {/* Entity graph */}
+      <div className="card">
+        <h2 className="card-title">Entity Graph</h2>
+        <p className="card-text">
+          Alerts in this incident were linked by the entities below. Two entities are connected
+          when they appear in the same alert.
+        </p>
+        <EntityGraph graph={incident.entity_graph} />
+      </div>
 
       {/* MITRE Techniques */}
       {techniques.length > 0 && (
@@ -141,13 +163,13 @@ export default function IncidentDetail({ incidentId, onNavigate }) {
       {/* Actions */}
       <div className="card action-bar">
         <button className="btn btn-primary" onClick={handleGenerateReport} disabled={reportLoading}>
-          {reportLoading ? 'Generating...' : '📄 Generate Report'}
+          {reportLoading ? 'Generating...' : 'Generate report'}
         </button>
         <button
           className="btn btn-primary"
           onClick={() => onNavigate('ai', { contextType: 'incident', contextId: incidentId })}
         >
-          🤖 Ask AI
+          Ask AI
         </button>
       </div>
 
